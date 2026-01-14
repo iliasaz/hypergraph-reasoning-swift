@@ -1,0 +1,25 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Code Coverage
+*.profdata
+*.profraw
+.build/coverage/
+coverage/
+
+# Claude Code configuration
+.claude/
+.mcp.json
+.agent_context.md
+
+# Implementation plans (internal documentation)
+IMPLEMENTATION_PLAN.md
+
+# Test output
+test_output/
