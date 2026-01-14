@@ -252,4 +252,6 @@ This is a Swift port of the hypergraph building pipeline from:
 
 ## License
 
-See the original [HyperGraphReasoning](https://github.com/lamm-mit/HyperGraphReasoning) repository for license information.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This is a Swift port inspired by the original [HyperGraphReasoning](https://github.com/lamm-mit/HyperGraphReasoning) Python project by Markus J. Buehler (MIT). Please refer to the original repository for its licensing terms.
