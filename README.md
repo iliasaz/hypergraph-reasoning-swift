@@ -1,5 +1,11 @@
 # HyperGraphReasoning Swift
 
+[![Swift](https://github.com/iliasaz/hypergraph-reasoning-swift/actions/workflows/swift.yml/badge.svg)](https://github.com/iliasaz/hypergraph-reasoning-swift/actions/workflows/swift.yml)
+[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-macOS%2014%20|%20iOS%2017-blue.svg)](https://developer.apple.com)
+[![Release](https://img.shields.io/github/v/release/iliasaz/hypergraph-reasoning-swift)](https://github.com/iliasaz/hypergraph-reasoning-swift/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Swift implementation of hypergraph-based knowledge representation extraction, ported from the [HyperGraphReasoning](https://github.com/lamm-mit/HyperGraphReasoning) Python project.
 
 ## Overview
