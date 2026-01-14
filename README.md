@@ -12,7 +12,9 @@ A Swift implementation of hypergraph-based knowledge representation extraction, 
 
 This package provides tools for building hypergraph knowledge representations from scientific text using Large Language Models. Unlike traditional graphs where edges connect exactly two nodes, hypergraphs allow edges (hyperedges) to connect any number of nodes, enabling richer representation of complex relationships.
 
-The implementation uses [Ollama](https://ollama.ai) for local LLM inference and embedding generation, making it suitable for privacy-sensitive applications and offline use.
+The implementation supports multiple LLM providers:
+- **[Ollama](https://ollama.ai)** for local LLM inference and embedding generation
+- **[OpenRouter](https://openrouter.ai)** for cloud-based access to various models (OpenAI, Anthropic, Meta, etc.)
 
 ## Features
 
@@ -28,8 +30,10 @@ The implementation uses [Ollama](https://ollama.ai) for local LLM inference and 
   - Markdown document processing
 
 - **LLM Integration**:
-  - Ollama-based chat completions for entity/relation extraction
-  - Batch embedding generation using nomic-embed-text
+  - Multiple provider support via `LLMProvider` protocol
+  - **Ollama**: Local inference with any Ollama model
+  - **OpenRouter**: Cloud access to OpenAI, Anthropic, Meta Llama, and more
+  - Batch embedding generation using nomic-embed-text (Ollama)
   - Structured JSON output parsing
 
 - **Knowledge Extraction**:
@@ -41,9 +45,13 @@ The implementation uses [Ollama](https://ollama.ai) for local LLM inference and 
 
 - macOS 14.0+ / iOS 17.0+
 - Swift 6.0+
-- [Ollama](https://ollama.ai) running locally with required models:
+- For **Ollama** provider:
+  - [Ollama](https://ollama.ai) running locally with required models
   - Chat model (default: `gpt-oss:20b`)
   - Embedding model (default: `nomic-embed-text:v1.5`)
+- For **OpenRouter** provider:
+  - OpenRouter API key from [openrouter.ai](https://openrouter.ai)
+  - Default model: `meta-llama/llama-4-maverick`
 
 ## Installation
 
@@ -62,6 +70,8 @@ Or add it as a local package in Xcode.
 ## Usage
 
 ### Library Usage
+
+#### Using Ollama (Local)
 
 ```swift
 import HyperGraphReasoning
@@ -88,6 +98,30 @@ print("Extracted \(result.nodeCount) nodes, \(result.edgeCount) edges")
 
 // Save results
 try processor.saveResult(result, to: URL(fileURLWithPath: "./output"))
+```
+
+#### Using OpenRouter (Cloud)
+
+```swift
+import HyperGraphReasoning
+
+// Create OpenRouter service for LLM
+let openRouter = try OpenRouterService(
+    apiKey: "sk-or-v1-...",
+    model: "meta-llama/llama-4-maverick"
+)
+
+// Ollama still needed for embeddings
+let ollama = OllamaService(embeddingModel: "nomic-embed-text:v1.5")
+
+// Create document processor with OpenRouter for extraction
+let processor = DocumentProcessor(
+    llmProvider: openRouter,
+    ollamaService: ollama,
+    chatModel: "meta-llama/llama-4-maverick"
+)
+
+let result = try await processor.processMarkdownFile(at: fileURL)
 ```
 
 ### Working with Hypergraphs
@@ -123,14 +157,17 @@ The package includes a command-line interface for processing documents:
 # Build the CLI
 swift build
 
-# Process a markdown file or directory
+# Process with Ollama (default)
 swift run hypergraph-cli process ./documents --output ./output --verbose
 
-# Extract hypergraph from text (without embeddings)
+# Process with OpenRouter
+swift run hypergraph-cli process ./documents --provider openrouter --api-key "sk-or-..." --output ./output
+
+# Extract hypergraph from text
 swift run hypergraph-cli extract "Your text here" --output graph.json
 
-# Extract from a file
-swift run hypergraph-cli extract --file document.md --output graph.json
+# Extract using OpenRouter with a specific model
+swift run hypergraph-cli extract --file document.md --provider openrouter --api-key "sk-or-..." --chat-model "anthropic/claude-3.5-sonnet"
 
 # Generate embeddings for an existing hypergraph
 swift run hypergraph-cli embed graph.json --output embeddings.json
@@ -143,7 +180,8 @@ swift run hypergraph-cli info graph.json
 
 **process** - Full pipeline processing
 ```
-USAGE: hypergraph-cli process <input> [--output <output>] [--chat-model <model>]
+USAGE: hypergraph-cli process <input> [--output <output>] [--provider <provider>]
+                              [--api-key <key>] [--chat-model <model>]
                               [--embedding-model <model>] [--chunk-size <size>]
                               [--skip-embeddings] [--verbose]
 
@@ -152,7 +190,10 @@ ARGUMENTS:
 
 OPTIONS:
   -o, --output <output>   Output directory (default: ./output)
-  --chat-model <model>    Chat model for extraction (default: gpt-oss:20b)
+  --provider <provider>   LLM provider: ollama or openrouter (default: ollama)
+  --api-key <key>         OpenRouter API key (required if provider is openrouter)
+  --chat-model <model>    Chat model for extraction
+                          (default: gpt-oss:20b for ollama, meta-llama/llama-4-maverick for openrouter)
   --embedding-model       Embedding model (default: nomic-embed-text:v1.5)
   --chunk-size <size>     Chunk size for text splitting (default: 10000)
   --skip-embeddings       Skip embedding generation
@@ -161,14 +202,17 @@ OPTIONS:
 
 **extract** - Extract hypergraph without embeddings
 ```
-USAGE: hypergraph-cli extract <input> [--output <output>] [--chat-model <model>] [--file]
+USAGE: hypergraph-cli extract <input> [--output <output>] [--provider <provider>]
+                              [--api-key <key>] [--chat-model <model>] [--file]
 
 ARGUMENTS:
   <input>                 Input text or file path
 
 OPTIONS:
   -o, --output <output>   Output JSON file (default: hypergraph.json)
-  --chat-model <model>    Chat model (default: gpt-oss:20b)
+  --provider <provider>   LLM provider: ollama or openrouter (default: ollama)
+  --api-key <key>         OpenRouter API key (required if provider is openrouter)
+  --chat-model <model>    Chat model for extraction
   --file                  Treat input as file path
 ```
 

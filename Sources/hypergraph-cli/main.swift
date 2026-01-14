@@ -2,6 +2,14 @@ import ArgumentParser
 import Foundation
 import HyperGraphReasoning
 
+/// LLM provider options for the CLI.
+enum LLMProviderOption: String, ExpressibleByArgument, CaseIterable {
+    case ollama
+    case openrouter
+
+    static var defaultValueDescription: String { "ollama" }
+}
+
 @main
 struct HypergraphCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -26,10 +34,16 @@ extension HypergraphCLI {
         @Option(name: .shortAndLong, help: "Output directory for results")
         var output: String = "./output"
 
-        @Option(name: .long, help: "Chat model for extraction")
-        var chatModel: String = "gpt-oss:20b"
+        @Option(name: .long, help: "LLM provider (ollama or openrouter)")
+        var provider: LLMProviderOption = .ollama
 
-        @Option(name: .long, help: "Embedding model")
+        @Option(name: .long, help: "OpenRouter API key (required if provider is openrouter)")
+        var apiKey: String?
+
+        @Option(name: .long, help: "Chat model for extraction")
+        var chatModel: String?
+
+        @Option(name: .long, help: "Embedding model (Ollama only)")
         var embeddingModel: String = "nomic-embed-text:v1.5"
 
         @Option(name: .long, help: "Chunk size for text splitting")
@@ -45,25 +59,51 @@ extension HypergraphCLI {
             let inputURL = URL(fileURLWithPath: input)
             let outputURL = URL(fileURLWithPath: output)
 
+            // Determine the chat model
+            let effectiveChatModel: String
+            switch provider {
+            case .ollama:
+                effectiveChatModel = chatModel ?? "gpt-oss:20b"
+            case .openrouter:
+                effectiveChatModel = chatModel ?? "meta-llama/llama-4-maverick"
+            }
+
             if verbose {
                 print("Input: \(inputURL.path)")
                 print("Output: \(outputURL.path)")
-                print("Chat Model: \(chatModel)")
+                print("Provider: \(provider.rawValue)")
+                print("Chat Model: \(effectiveChatModel)")
                 print("Embedding Model: \(embeddingModel)")
                 print("Chunk Size: \(chunkSize)")
             }
 
-            // Create services
+            // Create Ollama service (always needed for embeddings)
             let ollama = await MainActor.run {
                 OllamaService(
-                    chatModel: chatModel,
+                    chatModel: effectiveChatModel,
                     embeddingModel: embeddingModel
                 )
             }
 
+            // Create the appropriate LLM provider
+            let llmProvider: any LLMProvider
+            switch provider {
+            case .ollama:
+                llmProvider = ollama
+            case .openrouter:
+                guard let key = apiKey else {
+                    throw ValidationError("--api-key is required when using openrouter provider")
+                }
+                llmProvider = try OpenRouterService(
+                    apiKey: key,
+                    model: effectiveChatModel
+                )
+            }
+
             let processor = DocumentProcessor(
+                llmProvider: llmProvider,
                 ollamaService: ollama,
-                chatModel: chatModel,
+                chatModel: effectiveChatModel,
                 embeddingModel: embeddingModel,
                 chunkSize: chunkSize
             )
@@ -128,8 +168,14 @@ extension HypergraphCLI {
         @Option(name: .shortAndLong, help: "Output JSON file")
         var output: String = "hypergraph.json"
 
+        @Option(name: .long, help: "LLM provider (ollama or openrouter)")
+        var provider: LLMProviderOption = .ollama
+
+        @Option(name: .long, help: "OpenRouter API key (required if provider is openrouter)")
+        var apiKey: String?
+
         @Option(name: .long, help: "Chat model for extraction")
-        var chatModel: String = "gpt-oss:20b"
+        var chatModel: String?
 
         @Flag(name: .long, help: "Input is a file path")
         var file: Bool = false
@@ -143,14 +189,37 @@ extension HypergraphCLI {
                 text = input
             }
 
-            print("Extracting hypergraph...")
-
-            let ollama = await MainActor.run {
-                OllamaService(chatModel: chatModel)
+            // Determine the chat model
+            let effectiveChatModel: String
+            switch provider {
+            case .ollama:
+                effectiveChatModel = chatModel ?? "gpt-oss:20b"
+            case .openrouter:
+                effectiveChatModel = chatModel ?? "meta-llama/llama-4-maverick"
             }
+
+            print("Extracting hypergraph using \(provider.rawValue)...")
+
+            // Create the appropriate LLM provider
+            let llmProvider: any LLMProvider
+            switch provider {
+            case .ollama:
+                llmProvider = await MainActor.run {
+                    OllamaService(chatModel: effectiveChatModel)
+                }
+            case .openrouter:
+                guard let key = apiKey else {
+                    throw ValidationError("--api-key is required when using openrouter provider")
+                }
+                llmProvider = try OpenRouterService(
+                    apiKey: key,
+                    model: effectiveChatModel
+                )
+            }
+
             let extractor = HypergraphExtractor(
-                ollamaService: ollama,
-                model: chatModel
+                llmProvider: llmProvider,
+                model: effectiveChatModel
             )
 
             let (hypergraph, metadata) = try await extractor.extractFromDocument(text)

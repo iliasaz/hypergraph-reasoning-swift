@@ -3,12 +3,12 @@ import Foundation
 /// Extracts hypergraph knowledge structures from text using LLM inference.
 ///
 /// This is the main component for converting unstructured text into a hypergraph
-/// representation. It uses the OllamaService to call an LLM with specialized
+/// representation. It uses an LLMProvider to call an LLM with specialized
 /// prompts that extract Subject-Verb-Object triples.
 public actor HypergraphExtractor {
 
-    /// The Ollama service for LLM inference.
-    private let ollamaService: OllamaService
+    /// The LLM provider for inference.
+    private let llmProvider: any LLMProvider
 
     /// The model to use for extraction.
     private let model: String
@@ -19,7 +19,31 @@ public actor HypergraphExtractor {
     /// Whether to distill text before extraction.
     private let distillByDefault: Bool
 
-    /// Creates a hypergraph extractor.
+    /// Creates a hypergraph extractor with any LLM provider.
+    ///
+    /// - Parameters:
+    ///   - llmProvider: The LLM provider to use.
+    ///   - model: The LLM model name to use for extraction.
+    ///   - chunkSize: Size of text chunks. Defaults to 10000.
+    ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
+    ///   - distillByDefault: Whether to distill text by default. Defaults to false.
+    public init(
+        llmProvider: any LLMProvider,
+        model: String,
+        chunkSize: Int = 10000,
+        chunkOverlap: Int = 0,
+        distillByDefault: Bool = false
+    ) {
+        self.llmProvider = llmProvider
+        self.model = model
+        self.textSplitter = RecursiveTextSplitter(
+            chunkSize: chunkSize,
+            chunkOverlap: chunkOverlap
+        )
+        self.distillByDefault = distillByDefault
+    }
+
+    /// Creates a hypergraph extractor with an Ollama service (convenience initializer).
     ///
     /// - Parameters:
     ///   - ollamaService: The Ollama service to use.
@@ -27,15 +51,16 @@ public actor HypergraphExtractor {
     ///   - chunkSize: Size of text chunks. Defaults to 10000.
     ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
     ///   - distillByDefault: Whether to distill text by default. Defaults to false.
+    @MainActor
     public init(
         ollamaService: OllamaService,
-        model: String = "gpt-oss:20b",
+        model: String? = nil,
         chunkSize: Int = 10000,
         chunkOverlap: Int = 0,
         distillByDefault: Bool = false
     ) {
-        self.ollamaService = ollamaService
-        self.model = model
+        self.llmProvider = ollamaService
+        self.model = model ?? ollamaService.defaultModel
         self.textSplitter = RecursiveTextSplitter(
             chunkSize: chunkSize,
             chunkOverlap: chunkOverlap
@@ -123,20 +148,22 @@ public actor HypergraphExtractor {
 
     /// Distills text using the LLM.
     private func distillText(_ text: String) async throws -> String {
-        try await ollamaService.chat(
+        try await llmProvider.chat(
             systemPrompt: SystemPrompts.distillation,
             userPrompt: SystemPrompts.distillationUserPrompt(text: text),
-            model: model
+            model: model,
+            temperature: nil
         )
     }
 
     /// Extracts events from text using the LLM.
     private func extractEvents(from text: String) async throws -> HypergraphJSON {
-        try await ollamaService.generate(
+        try await llmProvider.generate(
             systemPrompt: SystemPrompts.hypergraphExtraction,
             userPrompt: SystemPrompts.extractionUserPrompt(text: text),
             responseType: HypergraphJSON.self,
-            model: model
+            model: model,
+            temperature: nil
         )
     }
 }

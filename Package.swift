@@ -20,12 +20,14 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/mattt/ollama-swift.git", branch: "main"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/iliasaz/SwiftAgents.git", branch: "main"),
     ],
     targets: [
         .target(
             name: "HyperGraphReasoning",
             dependencies: [
                 .product(name: "Ollama", package: "ollama-swift"),
+                .product(name: "SwiftAgents", package: "SwiftAgents"),
             ],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")

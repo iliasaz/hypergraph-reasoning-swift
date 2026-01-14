@@ -29,7 +29,7 @@ public enum OllamaError: Error, LocalizedError {
 ///
 /// This service wraps the ollama-swift Client for use in the hypergraph extraction pipeline.
 @MainActor
-public final class OllamaService: Sendable {
+public final class OllamaService: @preconcurrency LLMProvider {
 
     /// Default timeout for requests (5 minutes).
     public static let defaultTimeout: TimeInterval = 300
@@ -39,6 +39,9 @@ public final class OllamaService: Sendable {
 
     /// Default model for chat completions.
     public let defaultChatModel: String
+
+    /// The default model identifier (conforms to LLMProvider).
+    public var defaultModel: String { defaultChatModel }
 
     /// Default model for embeddings.
     public let defaultEmbeddingModel: String
@@ -146,7 +149,7 @@ public final class OllamaService: Sendable {
     ///   - model: The model to use.
     ///   - temperature: Sampling temperature.
     /// - Returns: The decoded response object.
-    public func generate<T: Decodable>(
+    public func generate<T: Decodable & Sendable>(
         systemPrompt: String,
         userPrompt: String,
         responseType: T.Type,
@@ -263,28 +266,3 @@ public final class OllamaService: Sendable {
     }
 }
 
-// MARK: - Convenience Extensions
-
-extension OllamaService {
-
-    /// Generates hypergraph events from text.
-    ///
-    /// This is a convenience method that uses the hypergraph extraction prompt
-    /// and returns a `HypergraphJSON` response.
-    ///
-    /// - Parameters:
-    ///   - text: The text to extract events from.
-    ///   - model: The model to use.
-    /// - Returns: The extracted hypergraph events.
-    public func extractHypergraphEvents(
-        from text: String,
-        model: String? = nil
-    ) async throws -> HypergraphJSON {
-        try await generate(
-            systemPrompt: SystemPrompts.hypergraphExtraction,
-            userPrompt: "Context: ```\(text)``` \n Extract the hypergraph knowledge graph in structured JSON format: ",
-            responseType: HypergraphJSON.self,
-            model: model
-        )
-    }
-}

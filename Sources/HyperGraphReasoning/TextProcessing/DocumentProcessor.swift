@@ -15,13 +15,14 @@ public actor DocumentProcessor {
     /// Default chunk size for processing.
     private let defaultChunkSize: Int
 
-    /// Creates a document processor.
+    /// Creates a document processor with Ollama service.
     ///
     /// - Parameters:
-    ///   - ollamaService: The Ollama service for LLM inference.
+    ///   - ollamaService: The Ollama service for LLM inference and embeddings.
     ///   - chatModel: Model for chat/extraction. Defaults to "gpt-oss:20b".
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
     ///   - chunkSize: Default chunk size. Defaults to 10000.
+    @MainActor
     public init(
         ollamaService: OllamaService,
         chatModel: String = "gpt-oss:20b",
@@ -30,6 +31,33 @@ public actor DocumentProcessor {
     ) {
         self.extractor = HypergraphExtractor(
             ollamaService: ollamaService,
+            model: chatModel,
+            chunkSize: chunkSize
+        )
+        self.embeddingService = EmbeddingService(
+            ollamaService: ollamaService,
+            model: embeddingModel
+        )
+        self.defaultChunkSize = chunkSize
+    }
+
+    /// Creates a document processor with any LLM provider.
+    ///
+    /// - Parameters:
+    ///   - llmProvider: The LLM provider for chat/extraction.
+    ///   - ollamaService: The Ollama service for embeddings (required for embedding generation).
+    ///   - chatModel: Model for chat/extraction.
+    ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
+    ///   - chunkSize: Default chunk size. Defaults to 10000.
+    public init(
+        llmProvider: any LLMProvider,
+        ollamaService: OllamaService,
+        chatModel: String,
+        embeddingModel: String = "nomic-embed-text:v1.5",
+        chunkSize: Int = 10000
+    ) {
+        self.extractor = HypergraphExtractor(
+            llmProvider: llmProvider,
             model: chatModel,
             chunkSize: chunkSize
         )
