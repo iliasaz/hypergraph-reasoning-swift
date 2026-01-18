@@ -293,7 +293,7 @@ extension HypergraphCLI {
 // MARK: - Simplify Command
 
 extension HypergraphCLI {
-    struct Simplify: ParsableCommand {
+    struct Simplify: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Simplify a hypergraph by merging similar nodes"
         )
@@ -313,10 +313,16 @@ extension HypergraphCLI {
         @Option(name: .long, help: "Node suffixes to exclude from merging (comma-separated)")
         var excludeSuffixes: String = ""
 
+        @Flag(name: .long, help: "Recompute embeddings for keeper nodes after merging")
+        var recomputeEmbeddings: Bool = false
+
+        @Option(name: .long, help: "Embedding model for recomputation (default: nomic-embed-text:v1.5)")
+        var embeddingModel: String = "nomic-embed-text:v1.5"
+
         @Flag(name: .shortAndLong, help: "Enable verbose output")
         var verbose: Bool = false
 
-        func run() throws {
+        func run() async throws {
             let inputURL = URL(fileURLWithPath: input)
             let embeddingsURL = URL(fileURLWithPath: embeddings)
             let outputURL = URL(fileURLWithPath: output)
@@ -353,16 +359,45 @@ extension HypergraphCLI {
 
             // Run simplification
             print("Simplifying hypergraph with threshold \(threshold)...")
+            if recomputeEmbeddings {
+                print("Will recompute embeddings for merged nodes using model: \(embeddingModel)")
+            }
+
             let simplifier = HypergraphSimplifier()
-            let result = simplifier.simplify(
-                hypergraph: hypergraph,
-                embeddings: nodeEmbeddings,
-                similarityThreshold: threshold,
-                excludeSuffixes: suffixes
-            )
+            let result: SimplificationResult
+
+            if recomputeEmbeddings {
+                // Create embedding service for recomputation
+                let ollama = await MainActor.run {
+                    OllamaService(embeddingModel: embeddingModel)
+                }
+                let embeddingService = EmbeddingService(
+                    ollamaService: ollama,
+                    model: embeddingModel
+                )
+
+                result = try await simplifier.simplify(
+                    hypergraph: hypergraph,
+                    embeddings: nodeEmbeddings,
+                    similarityThreshold: threshold,
+                    excludeSuffixes: suffixes,
+                    recomputeEmbeddings: true,
+                    embeddingService: embeddingService
+                )
+            } else {
+                result = simplifier.simplify(
+                    hypergraph: hypergraph,
+                    embeddings: nodeEmbeddings,
+                    similarityThreshold: threshold,
+                    excludeSuffixes: suffixes
+                )
+            }
 
             print("Merged \(result.mergeCount) pairs")
             print("Removed \(result.nodesRemoved) nodes, \(result.edgesRemoved) edges")
+            if result.embeddingsRecomputed > 0 {
+                print("Recomputed \(result.embeddingsRecomputed) embeddings")
+            }
             print("Simplified: \(result.hypergraph.nodeCount) nodes, \(result.hypergraph.edgeCount) edges")
 
             // Create output directory

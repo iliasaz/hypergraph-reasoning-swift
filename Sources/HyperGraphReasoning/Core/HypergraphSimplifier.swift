@@ -17,6 +17,9 @@ public struct SimplificationResult: Sendable {
     /// Number of edges removed (due to becoming singletons or empty).
     public let edgesRemoved: Int
 
+    /// Number of embeddings recomputed for keeper nodes.
+    public let embeddingsRecomputed: Int
+
     /// Details of each merge operation.
     public let mergeHistory: [MergeRecord]
 
@@ -26,6 +29,7 @@ public struct SimplificationResult: Sendable {
         mergeCount: Int,
         nodesRemoved: Int,
         edgesRemoved: Int,
+        embeddingsRecomputed: Int = 0,
         mergeHistory: [MergeRecord]
     ) {
         self.hypergraph = hypergraph
@@ -33,6 +37,7 @@ public struct SimplificationResult: Sendable {
         self.mergeCount = mergeCount
         self.nodesRemoved = nodesRemoved
         self.edgesRemoved = edgesRemoved
+        self.embeddingsRecomputed = embeddingsRecomputed
         self.mergeHistory = mergeHistory
     }
 }
@@ -229,7 +234,75 @@ public struct HypergraphSimplifier: Sendable {
             mergeCount: mergeHistory.count,
             nodesRemoved: mergedNodes.count,
             edgesRemoved: edgesRemoved,
+            embeddingsRecomputed: 0,
             mergeHistory: mergeHistory
+        )
+    }
+
+    /// Simplify a hypergraph by merging similar nodes, with optional embedding recomputation.
+    ///
+    /// This async version supports recomputing embeddings for keeper nodes that absorbed
+    /// other nodes during merging. This can improve downstream tasks by ensuring the
+    /// embedding reflects the merged concept.
+    ///
+    /// - Parameters:
+    ///   - hypergraph: The hypergraph to simplify.
+    ///   - embeddings: Node embeddings for similarity computation.
+    ///   - similarityThreshold: Minimum cosine similarity to merge nodes (default 0.9).
+    ///   - excludeSuffixes: Node suffixes to exclude from merging (e.g., [".png"] for images).
+    ///   - recomputeEmbeddings: Whether to recompute embeddings for keeper nodes.
+    ///   - embeddingService: The embedding service to use for recomputation (required if recomputeEmbeddings is true).
+    /// - Returns: SimplificationResult containing the simplified hypergraph and updated embeddings.
+    public func simplify(
+        hypergraph: StringHypergraph,
+        embeddings: NodeEmbeddings,
+        similarityThreshold: Float = defaultSimilarityThreshold,
+        excludeSuffixes: [String] = [],
+        recomputeEmbeddings: Bool,
+        embeddingService: EmbeddingService?
+    ) async throws -> SimplificationResult {
+        // First, run the synchronous simplification
+        let initialResult = simplify(
+            hypergraph: hypergraph,
+            embeddings: embeddings,
+            similarityThreshold: similarityThreshold,
+            excludeSuffixes: excludeSuffixes
+        )
+
+        // If no recomputation needed or no merges happened, return as-is
+        guard recomputeEmbeddings,
+              let service = embeddingService,
+              !initialResult.mergeHistory.isEmpty else {
+            return initialResult
+        }
+
+        // Find keeper nodes that received merges (need embedding recomputation)
+        let keeperNodes = Set(initialResult.mergeHistory.map { $0.keptNode })
+
+        // Filter to only nodes still in the graph (some might have been merged into others)
+        let nodesToRecompute = keeperNodes.intersection(initialResult.hypergraph.nodes)
+
+        guard !nodesToRecompute.isEmpty else {
+            return initialResult
+        }
+
+        // Recompute embeddings for keeper nodes
+        let recomputedEmbeddings = try await service.generateEmbeddings(for: Array(nodesToRecompute))
+
+        // Update embeddings with recomputed values
+        var updatedEmbeddings = initialResult.embeddings
+        for (node, embedding) in recomputedEmbeddings {
+            updatedEmbeddings[node] = embedding
+        }
+
+        return SimplificationResult(
+            hypergraph: initialResult.hypergraph,
+            embeddings: updatedEmbeddings,
+            mergeCount: initialResult.mergeCount,
+            nodesRemoved: initialResult.nodesRemoved,
+            edgesRemoved: initialResult.edgesRemoved,
+            embeddingsRecomputed: recomputedEmbeddings.count,
+            mergeHistory: initialResult.mergeHistory
         )
     }
 
