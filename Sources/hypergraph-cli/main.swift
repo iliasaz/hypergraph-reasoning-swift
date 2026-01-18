@@ -16,7 +16,7 @@ struct HypergraphCLI: AsyncParsableCommand {
         commandName: "hypergraph-cli",
         abstract: "CLI tool for building hypergraph knowledge representations",
         version: "0.1.0",
-        subcommands: [Process.self, Extract.self, Embed.self, Info.self]
+        subcommands: [Process.self, Extract.self, Embed.self, Simplify.self, Info.self]
     )
 }
 
@@ -286,6 +286,126 @@ extension HypergraphCLI {
             let data = try encoder.encode(embeddings)
             try data.write(to: outputURL)
             print("Saved to: \(outputURL.path)")
+        }
+    }
+}
+
+// MARK: - Simplify Command
+
+extension HypergraphCLI {
+    struct Simplify: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Simplify a hypergraph by merging similar nodes"
+        )
+
+        @Argument(help: "Input hypergraph JSON file")
+        var input: String
+
+        @Option(name: .shortAndLong, help: "Embeddings JSON file (required)")
+        var embeddings: String
+
+        @Option(name: .shortAndLong, help: "Output directory for results")
+        var output: String = "./simplified"
+
+        @Option(name: .long, help: "Similarity threshold for merging (0.0-1.0)")
+        var threshold: Float = 0.9
+
+        @Option(name: .long, help: "Node suffixes to exclude from merging (comma-separated)")
+        var excludeSuffixes: String = ""
+
+        @Flag(name: .shortAndLong, help: "Enable verbose output")
+        var verbose: Bool = false
+
+        func run() throws {
+            let inputURL = URL(fileURLWithPath: input)
+            let embeddingsURL = URL(fileURLWithPath: embeddings)
+            let outputURL = URL(fileURLWithPath: output)
+
+            // Validate threshold
+            guard threshold >= 0 && threshold <= 1 else {
+                throw ValidationError("Threshold must be between 0.0 and 1.0")
+            }
+
+            // Load hypergraph
+            if verbose {
+                print("Loading hypergraph from: \(inputURL.path)")
+            }
+            let hypergraph = try StringHypergraph.load(from: inputURL)
+            if verbose {
+                print("Loaded \(hypergraph.nodeCount) nodes, \(hypergraph.edgeCount) edges")
+            }
+
+            // Load embeddings
+            if verbose {
+                print("Loading embeddings from: \(embeddingsURL.path)")
+            }
+            let embeddingsData = try Data(contentsOf: embeddingsURL)
+            let nodeEmbeddings = try JSONDecoder().decode(NodeEmbeddings.self, from: embeddingsData)
+            if verbose {
+                print("Loaded \(nodeEmbeddings.count) embeddings")
+            }
+
+            // Parse exclude suffixes
+            let suffixes = excludeSuffixes
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+
+            // Run simplification
+            print("Simplifying hypergraph with threshold \(threshold)...")
+            let simplifier = HypergraphSimplifier()
+            let result = simplifier.simplify(
+                hypergraph: hypergraph,
+                embeddings: nodeEmbeddings,
+                similarityThreshold: threshold,
+                excludeSuffixes: suffixes
+            )
+
+            print("Merged \(result.mergeCount) pairs")
+            print("Removed \(result.nodesRemoved) nodes, \(result.edgesRemoved) edges")
+            print("Simplified: \(result.hypergraph.nodeCount) nodes, \(result.hypergraph.edgeCount) edges")
+
+            // Create output directory
+            try FileManager.default.createDirectory(
+                at: outputURL,
+                withIntermediateDirectories: true
+            )
+
+            // Save simplified hypergraph
+            let graphURL = outputURL.appendingPathComponent("simplified_graph.json")
+            try result.hypergraph.save(to: graphURL)
+            print("Saved hypergraph to: \(graphURL.path)")
+
+            // Save updated embeddings
+            let embURL = outputURL.appendingPathComponent("simplified_embeddings.json")
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let embData = try encoder.encode(result.embeddings)
+            try embData.write(to: embURL)
+            print("Saved embeddings to: \(embURL.path)")
+
+            // Save merge history
+            let historyURL = outputURL.appendingPathComponent("merge_history.json")
+            let historyData = try encoder.encode(result.mergeHistory)
+            try historyData.write(to: historyURL)
+            print("Saved merge history to: \(historyURL.path)")
+
+            // Print merge details if verbose
+            if verbose && !result.mergeHistory.isEmpty {
+                print("\nMerge Details:")
+                for (i, record) in result.mergeHistory.prefix(20).enumerated() {
+                    let kept = record.keptNode.count > 30
+                        ? String(record.keptNode.prefix(27)) + "..."
+                        : record.keptNode
+                    let removed = record.removedNode.count > 30
+                        ? String(record.removedNode.prefix(27)) + "..."
+                        : record.removedNode
+                    print("  \(i + 1). '\(removed)' → '\(kept)' (sim: \(String(format: "%.3f", record.similarity)))")
+                }
+                if result.mergeHistory.count > 20 {
+                    print("  ... and \(result.mergeHistory.count - 20) more merges")
+                }
+            }
         }
     }
 }
