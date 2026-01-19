@@ -182,9 +182,9 @@ public struct ContextCollector: Sendable {
         // If we have specified source and target nodes
         if let source = sourceNode, let target = targetNode {
             if let relation = relation {
-                return "\(source) \(relation) \(target)"
+                return "\(source) \(relation) \(target)."
             } else {
-                return "\(source) is related to \(target)"
+                return "\(source) is related to \(target)."
             }
         }
 
@@ -193,75 +193,75 @@ public struct ContextCollector: Sendable {
 
         if nodeList.count == 2 {
             if let relation = relation {
-                return "\(nodeList[0]) \(relation) \(nodeList[1])"
+                return "\(nodeList[0]) \(relation) \(nodeList[1])."
             } else {
-                return "\(nodeList[0]) is connected to \(nodeList[1])"
+                return "\(nodeList[0]) is connected to \(nodeList[1])."
             }
         } else if nodeList.count > 2 {
             let allButLast = nodeList.dropLast().joined(separator: ", ")
             let last = nodeList.last!
             if let relation = relation {
-                return "\(allButLast), and \(last) are connected via \(relation)"
+                return "\(allButLast), \(last) \(relation)."
             } else {
-                return "\(allButLast), and \(last) are connected"
+                return "\(allButLast), \(last) are connected."
             }
         } else {
-            return nodeList.joined(separator: ", ")
+            return nodeList.joined(separator: ", ") + "."
         }
     }
 
     /// Formats a directional sentence from source/target arrays.
+    ///
+    /// Matches Python format: "source1, source2 relation target1, target2."
     private func formatDirectionalSentence(
         source: [String],
         target: [String],
         relation: String?
     ) -> String {
-        let sourceStr = source.count > 1
-            ? source.joined(separator: " and ")
-            : source.first ?? ""
-
-        let targetStr = target.count > 1
-            ? target.joined(separator: " and ")
-            : target.first ?? ""
+        // Use comma-separated format to match Python behavior
+        let sourceStr = source.joined(separator: ", ")
+        let targetStr = target.joined(separator: ", ")
 
         if let relation = relation {
-            return "\(sourceStr) \(relation) \(targetStr)"
+            return "\(sourceStr) \(relation) \(targetStr)."
         } else {
-            return "\(sourceStr) is related to \(targetStr)"
+            return "\(sourceStr) is related to \(targetStr)."
         }
     }
 
     /// Extracts the relation name from an edge ID.
     ///
     /// Edge ID format: "relation_chunkXXX_N"
-    /// This extracts "relation" and converts underscores to spaces.
+    /// This extracts "relation" exactly as stored (matching Python behavior).
+    ///
+    /// Note: Python uses the relation exactly as extracted from the edge ID.
+    /// If underscores should be converted to spaces, that should be done
+    /// at hypergraph construction time, not here.
     private func extractRelation(from edgeID: String) -> String? {
         // Try to extract relation from edge ID
         // Format: "relation_chunk..." or "relation_chunkXXX_N"
+        // Python regex: r"(.+?)_chunk([0-9A-Za-z]+)_(\d+)"
 
         // First, check if it matches the chunk pattern
-        let pattern = "^(.+?)_chunk[a-f0-9]+_\\d+$"
+        let pattern = "^(.+?)_chunk[0-9A-Za-z]+_\\d+$"
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
             let range = NSRange(edgeID.startIndex..<edgeID.endIndex, in: edgeID)
             if let match = regex.firstMatch(in: edgeID, options: [], range: range),
                let relationRange = Range(match.range(at: 1), in: edgeID) {
                 let relation = String(edgeID[relationRange])
-                // Convert underscores to spaces
-                return relation.replacingOccurrences(of: "_", with: " ")
+                // Return relation exactly as stored (matching Python)
+                return relation.trimmingCharacters(in: .whitespaces)
             }
         }
 
         // Fallback: try splitting by "_chunk"
         if let chunkIndex = edgeID.range(of: "_chunk", options: .caseInsensitive) {
             let relation = String(edgeID[..<chunkIndex.lowerBound])
-            return relation.replacingOccurrences(of: "_", with: " ")
+            return relation.trimmingCharacters(in: .whitespaces)
         }
 
         // Last fallback: use the whole edge ID, cleaned up
-        let cleaned = edgeID
-            .replacingOccurrences(of: "_", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
+        let cleaned = edgeID.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : cleaned
     }
 }

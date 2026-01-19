@@ -63,12 +63,16 @@ extension HypergraphJSON {
         var metadata = [ChunkMetadata]()
 
         for (index, event) in events.enumerated() {
+            // Normalize relation: convert underscores to spaces for consistency
+            // This handles LLMs that might output "is_a" instead of "is a"
+            let normalizedRelation = event.relation.replacingOccurrences(of: "_", with: " ")
+
             // Create edge ID
             let edgeID: String
             if let chunkID = chunkID {
-                edgeID = "\(event.relation)_chunk\(chunkID)_\(index)"
+                edgeID = "\(normalizedRelation)_chunk\(chunkID)_\(index)"
             } else {
-                edgeID = "\(event.relation)_\(index)"
+                edgeID = "\(normalizedRelation)_\(index)"
             }
 
             // Combine source and target nodes

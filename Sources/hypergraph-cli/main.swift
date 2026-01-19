@@ -520,6 +520,9 @@ extension HypergraphCLI {
         @Option(name: .shortAndLong, help: "Embeddings JSON file")
         var embeddings: String
 
+        @Option(name: .shortAndLong, help: "Metadata JSON file (provides source/target for directional sentences)")
+        var metadata: String?
+
         @Option(name: .long, help: "LLM provider for chat (ollama or openrouter)")
         var provider: LLMProviderOption = .ollama
 
@@ -575,6 +578,19 @@ extension HypergraphCLI {
                 print("Loaded \(nodeEmbeddings.count) embeddings")
             }
 
+            // Load metadata (optional)
+            var chunkMetadata: [ChunkMetadata]? = nil
+            if let metadataPath = metadata {
+                let metadataURL = URL(fileURLWithPath: metadataPath)
+                if verbose {
+                    print("Loading metadata from: \(metadataURL.path)")
+                }
+                chunkMetadata = try [ChunkMetadata].load(from: metadataURL)
+                if verbose {
+                    print("Loaded \(chunkMetadata?.count ?? 0) metadata entries")
+                }
+            }
+
             // Determine the chat model
             let effectiveChatModel: String
             switch provider {
@@ -619,6 +635,7 @@ extension HypergraphCLI {
                 embeddings: nodeEmbeddings,
                 llmProvider: llmProvider,
                 embeddingService: embeddingService,
+                metadata: chunkMetadata,
                 chatModel: effectiveChatModel
             )
 

@@ -80,6 +80,33 @@ extension Hypergraph where NodeID: Codable, EdgeID: Codable {
     }
 }
 
+// MARK: - Metadata File Operations
+
+extension Array where Element == ChunkMetadata {
+
+    /// Saves metadata to a JSON file.
+    ///
+    /// - Parameter url: The file URL to save to.
+    /// - Throws: Encoding or file system errors.
+    public func save(to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(self)
+        try data.write(to: url)
+    }
+
+    /// Loads metadata from a JSON file.
+    ///
+    /// - Parameter url: The file URL to load from.
+    /// - Returns: The loaded metadata array.
+    /// - Throws: Decoding or file system errors.
+    public static func load(from url: URL) throws -> [ChunkMetadata] {
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        return try decoder.decode([ChunkMetadata].self, from: data)
+    }
+}
+
 // MARK: - Python Compatibility
 
 extension Hypergraph where NodeID == String, EdgeID == String {
