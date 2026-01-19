@@ -116,16 +116,19 @@ public actor HypergraphExtractor {
     /// - Parameters:
     ///   - text: The full document text.
     ///   - distill: Whether to distill each chunk.
-    /// - Returns: A tuple of (combined hypergraph, all metadata).
+    /// - Returns: A tuple of (combined hypergraph, all metadata, chunk index).
     public func extractFromDocument(
         _ text: String,
         distill: Bool? = nil
-    ) async throws -> (Hypergraph<String, String>, [ChunkMetadata]) {
+    ) async throws -> (Hypergraph<String, String>, [ChunkMetadata], ChunkIndex) {
         let chunks = textSplitter.split(text)
 
         guard !chunks.isEmpty else {
-            return (Hypergraph(), [])
+            return (Hypergraph(), [], ChunkIndex())
         }
+
+        // Build chunk index for O(1) lookup (provenance and citations)
+        let chunkIndex = ChunkIndex(chunks: chunks)
 
         var combinedGraph = Hypergraph<String, String>()
         var allMetadata = [ChunkMetadata]()
@@ -141,7 +144,7 @@ public actor HypergraphExtractor {
             }
         }
 
-        return (combinedGraph, allMetadata)
+        return (combinedGraph, allMetadata, chunkIndex)
     }
 
     // MARK: - Helper Methods
@@ -177,12 +180,12 @@ extension HypergraphExtractor {
     /// - Parameters:
     ///   - documents: Array of (identifier, text) tuples.
     ///   - distill: Whether to distill each chunk.
-    /// - Returns: Dictionary mapping identifiers to (hypergraph, metadata) results.
+    /// - Returns: Dictionary mapping identifiers to (hypergraph, metadata, chunkIndex) results.
     public func processDocuments(
         _ documents: [(id: String, text: String)],
         distill: Bool? = nil
-    ) async throws -> [String: (Hypergraph<String, String>, [ChunkMetadata])] {
-        var results = [String: (Hypergraph<String, String>, [ChunkMetadata])]()
+    ) async throws -> [String: (Hypergraph<String, String>, [ChunkMetadata], ChunkIndex)] {
+        var results = [String: (Hypergraph<String, String>, [ChunkMetadata], ChunkIndex)]()
 
         for (id, text) in documents {
             let result = try await extractFromDocument(text, distill: distill)
@@ -197,21 +200,23 @@ extension HypergraphExtractor {
     /// - Parameters:
     ///   - documents: Array of (identifier, text) tuples.
     ///   - distill: Whether to distill each chunk.
-    /// - Returns: A tuple of (merged hypergraph, all metadata).
+    /// - Returns: A tuple of (merged hypergraph, all metadata, merged chunkIndex).
     public func processAndMergeDocuments(
         _ documents: [(id: String, text: String)],
         distill: Bool? = nil
-    ) async throws -> (Hypergraph<String, String>, [ChunkMetadata]) {
+    ) async throws -> (Hypergraph<String, String>, [ChunkMetadata], ChunkIndex) {
         var combinedGraph = Hypergraph<String, String>()
         var allMetadata = [ChunkMetadata]()
+        var combinedChunks = ChunkIndex()
 
         for (_, text) in documents {
-            let (docGraph, docMetadata) = try await extractFromDocument(text, distill: distill)
+            let (docGraph, docMetadata, docChunks) = try await extractFromDocument(text, distill: distill)
             combinedGraph.formUnion(docGraph)
             allMetadata.append(contentsOf: docMetadata)
+            combinedChunks.merge(docChunks)
         }
 
-        return (combinedGraph, allMetadata)
+        return (combinedGraph, allMetadata, combinedChunks)
     }
 }
 

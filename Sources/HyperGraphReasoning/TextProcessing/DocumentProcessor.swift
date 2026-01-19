@@ -118,8 +118,8 @@ public actor DocumentProcessor {
         documentID: String? = nil,
         generateEmbeddings: Bool = true
     ) async throws -> ProcessingResult {
-        // Extract hypergraph
-        let (hypergraph, metadata) = try await extractor.extractFromDocument(text)
+        // Extract hypergraph and chunks
+        let (hypergraph, metadata, chunkIndex) = try await extractor.extractFromDocument(text)
 
         // Optionally generate embeddings
         var embeddings = NodeEmbeddings()
@@ -131,6 +131,7 @@ public actor DocumentProcessor {
             hypergraph: hypergraph,
             metadata: metadata,
             embeddings: embeddings,
+            chunkIndex: chunkIndex,
             documentID: documentID
         )
     }
@@ -193,11 +194,13 @@ public actor DocumentProcessor {
         var combinedGraph = Hypergraph<String, String>()
         var allMetadata = [ChunkMetadata]()
         var combinedEmbeddings = NodeEmbeddings()
+        var combinedChunks = ChunkIndex()
 
         for result in results {
             combinedGraph.formUnion(result.hypergraph)
             allMetadata.append(contentsOf: result.metadata)
             combinedEmbeddings.merge(result.embeddings)
+            combinedChunks.merge(result.chunkIndex)
         }
 
         // Update embeddings if needed
@@ -211,7 +214,8 @@ public actor DocumentProcessor {
         return ProcessingResult(
             hypergraph: combinedGraph,
             metadata: allMetadata,
-            embeddings: combinedEmbeddings
+            embeddings: combinedEmbeddings,
+            chunkIndex: combinedChunks
         )
     }
 
@@ -284,6 +288,7 @@ public actor DocumentProcessor {
             hypergraph: simplifiedGraph,
             metadata: updatedMetadata,
             embeddings: simplifiedEmbeddings,
+            chunkIndex: result.chunkIndex,
             documentID: result.documentID
         )
     }
@@ -317,6 +322,10 @@ public actor DocumentProcessor {
         let embeddingsPath = directory.appendingPathComponent("\(baseName)_embeddings.json")
         let embeddingsData = try encoder.encode(result.embeddings)
         try embeddingsData.write(to: embeddingsPath)
+
+        // Save chunks (for provenance and citations)
+        let chunksPath = directory.appendingPathComponent("\(baseName)_chunks.json")
+        try result.chunkIndex.save(to: chunksPath)
     }
 }
 
@@ -333,6 +342,9 @@ public struct ProcessingResult: Sendable, Codable {
     /// Node embeddings.
     public let embeddings: NodeEmbeddings
 
+    /// Index of original text chunks for provenance and citations.
+    public let chunkIndex: ChunkIndex
+
     /// Document identifier (if any).
     public let documentID: String?
 
@@ -341,11 +353,13 @@ public struct ProcessingResult: Sendable, Codable {
         hypergraph: Hypergraph<String, String>,
         metadata: [ChunkMetadata],
         embeddings: NodeEmbeddings,
+        chunkIndex: ChunkIndex = ChunkIndex(),
         documentID: String? = nil
     ) {
         self.hypergraph = hypergraph
         self.metadata = metadata
         self.embeddings = embeddings
+        self.chunkIndex = chunkIndex
         self.documentID = documentID
     }
 

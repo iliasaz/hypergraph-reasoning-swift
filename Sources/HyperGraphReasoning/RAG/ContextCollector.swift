@@ -12,17 +12,23 @@ public struct ContextCollector: Sendable {
     /// Optional chunk metadata for extracting edge labels.
     private let metadata: [ChunkMetadata]?
 
+    /// Optional chunk index for source text citations (O(1) lookup).
+    private let chunkIndex: ChunkIndex?
+
     /// Creates a context collector.
     ///
     /// - Parameters:
     ///   - hypergraph: The hypergraph to collect context from.
     ///   - metadata: Optional metadata containing edge provenance.
+    ///   - chunkIndex: Optional chunk index for source text citations.
     public init(
         hypergraph: StringHypergraph,
-        metadata: [ChunkMetadata]? = nil
+        metadata: [ChunkMetadata]? = nil,
+        chunkIndex: ChunkIndex? = nil
     ) {
         self.hypergraph = hypergraph
         self.metadata = metadata
+        self.chunkIndex = chunkIndex
     }
 
     // MARK: - Context Collection
@@ -263,6 +269,37 @@ public struct ContextCollector: Sendable {
         // Last fallback: use the whole edge ID, cleaned up
         let cleaned = edgeID.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : cleaned
+    }
+
+    /// Extracts the chunk ID from an edge ID.
+    ///
+    /// Edge ID format: "relation_chunkXXX_N" where XXX is the chunk ID.
+    ///
+    /// - Parameter edgeID: The edge identifier.
+    /// - Returns: The chunk ID if found, nil otherwise.
+    private func extractChunkID(from edgeID: String) -> String? {
+        // Python regex: r"(.+?)_chunk([0-9A-Za-z]+)_(\d+)"
+        let pattern = "^.+?_chunk([0-9A-Za-z]+)_\\d+$"
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            let range = NSRange(edgeID.startIndex..<edgeID.endIndex, in: edgeID)
+            if let match = regex.firstMatch(in: edgeID, options: [], range: range),
+               let chunkRange = Range(match.range(at: 1), in: edgeID) {
+                return String(edgeID[chunkRange])
+            }
+        }
+        return nil
+    }
+
+    /// Gets a citation (source text preview) for an edge.
+    ///
+    /// - Parameters:
+    ///   - edgeID: The edge identifier.
+    ///   - maxLength: Maximum length of the citation preview.
+    /// - Returns: The source text preview, or nil if not available.
+    public func getCitation(for edgeID: String, maxLength: Int = 200) -> String? {
+        guard let chunkIndex = chunkIndex else { return nil }
+        guard let chunkID = extractChunkID(from: edgeID) else { return nil }
+        return chunkIndex.preview(for: chunkID, maxLength: maxLength)
     }
 }
 

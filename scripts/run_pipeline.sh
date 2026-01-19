@@ -89,6 +89,7 @@ swift run hypergraph-cli process "$MARKDOWN_FILE" \
 GRAPH_FILE=$(find "$OUTPUT_DIR" -name "*_graph.json" | head -1)
 EMBEDDINGS_FILE=$(find "$OUTPUT_DIR" -name "*_embeddings.json" | head -1)
 METADATA_FILE=$(find "$OUTPUT_DIR" -name "*_metadata.json" | head -1)
+CHUNKS_FILE=$(find "$OUTPUT_DIR" -name "*_chunks.json" | head -1)
 
 if [[ -z "$GRAPH_FILE" ]] || [[ -z "$EMBEDDINGS_FILE" ]]; then
     echo -e "${RED}Error: Could not find generated graph or embeddings files${NC}"
@@ -100,6 +101,7 @@ echo -e "${GREEN}Generated files:${NC}"
 echo -e "  Graph:      $GRAPH_FILE"
 echo -e "  Embeddings: $EMBEDDINGS_FILE"
 [[ -n "$METADATA_FILE" ]] && echo -e "  Metadata:   $METADATA_FILE"
+[[ -n "$CHUNKS_FILE" ]] && echo -e "  Chunks:     $CHUNKS_FILE"
 echo ""
 
 # Step 2: Simplify (optional - uncomment to enable)
@@ -144,6 +146,11 @@ if [[ -n "$QUESTION" ]]; then
         QUERY_CMD+=(--metadata "$METADATA_FILE")
     fi
 
+    # Add chunks if available (for citations)
+    if [[ -n "$CHUNKS_FILE" ]]; then
+        QUERY_CMD+=(--chunks "$CHUNKS_FILE")
+    fi
+
     "${QUERY_CMD[@]}"
 else
     echo -e "${YELLOW}[Step 3/3] Skipped (no question provided)${NC}"
@@ -153,6 +160,7 @@ else
     echo -e "${GREEN}    --graph \"$GRAPH_FILE\" \\${NC}"
     echo -e "${GREEN}    --embeddings \"$EMBEDDINGS_FILE\" \\${NC}"
     [[ -n "$METADATA_FILE" ]] && echo -e "${GREEN}    --metadata \"$METADATA_FILE\" \\${NC}"
+    [[ -n "$CHUNKS_FILE" ]] && echo -e "${GREEN}    --chunks \"$CHUNKS_FILE\" \\${NC}"
     echo -e "${GREEN}    --provider openrouter \\${NC}"
     echo -e "${GREEN}    --api-key \"\$OPENROUTER_API_KEY\" \\${NC}"
     echo -e "${GREEN}    --show-context${NC}"

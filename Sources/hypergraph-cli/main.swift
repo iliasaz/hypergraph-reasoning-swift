@@ -222,7 +222,7 @@ extension HypergraphCLI {
                 model: effectiveChatModel
             )
 
-            let (hypergraph, metadata) = try await extractor.extractFromDocument(text)
+            let (hypergraph, metadata, chunkIndex) = try await extractor.extractFromDocument(text)
 
             print("Extracted \(hypergraph.nodeCount) nodes, \(hypergraph.edgeCount) edges")
 
@@ -239,6 +239,12 @@ extension HypergraphCLI {
             let metadataData = try encoder.encode(metadata)
             try metadataData.write(to: metadataURL)
             print("Metadata saved to: \(metadataURL.path)")
+
+            // Save chunks (for provenance and citations)
+            let chunksURL = outputURL.deletingPathExtension()
+                .appendingPathExtension("chunks.json")
+            try chunkIndex.save(to: chunksURL)
+            print("Chunks saved to: \(chunksURL.path)")
         }
     }
 }
@@ -523,6 +529,9 @@ extension HypergraphCLI {
         @Option(name: .shortAndLong, help: "Metadata JSON file (provides source/target for directional sentences)")
         var metadata: String?
 
+        @Option(name: .long, help: "Chunks JSON file (provides source text for citations)")
+        var chunks: String?
+
         @Option(name: .long, help: "LLM provider for chat (ollama or openrouter)")
         var provider: LLMProviderOption = .ollama
 
@@ -591,6 +600,19 @@ extension HypergraphCLI {
                 }
             }
 
+            // Load chunks (optional, for citations)
+            var chunkIndex: ChunkIndex? = nil
+            if let chunksPath = chunks {
+                let chunksURL = URL(fileURLWithPath: chunksPath)
+                if verbose {
+                    print("Loading chunks from: \(chunksURL.path)")
+                }
+                chunkIndex = try ChunkIndex.load(from: chunksURL)
+                if verbose {
+                    print("Loaded \(chunkIndex?.count ?? 0) chunks")
+                }
+            }
+
             // Determine the chat model
             let effectiveChatModel: String
             switch provider {
@@ -636,6 +658,7 @@ extension HypergraphCLI {
                 llmProvider: llmProvider,
                 embeddingService: embeddingService,
                 metadata: chunkMetadata,
+                chunkIndex: chunkIndex,
                 chatModel: effectiveChatModel
             )
 

@@ -27,6 +27,9 @@ public actor GraphRAGService {
     /// Optional chunk metadata for richer context.
     private let metadata: [ChunkMetadata]?
 
+    /// Optional chunk index for source text citations (O(1) lookup).
+    private let chunkIndex: ChunkIndex?
+
     /// The chat model to use for responses.
     private let chatModel: String?
 
@@ -71,7 +74,11 @@ public actor GraphRAGService {
         if let collector = _contextCollector {
             return collector
         }
-        let collector = ContextCollector(hypergraph: hypergraph, metadata: metadata)
+        let collector = ContextCollector(
+            hypergraph: hypergraph,
+            metadata: metadata,
+            chunkIndex: chunkIndex
+        )
         _contextCollector = collector
         return collector
     }
@@ -86,6 +93,7 @@ public actor GraphRAGService {
     ///   - llmProvider: LLM provider for extraction and generation.
     ///   - embeddingService: Service for generating query embeddings.
     ///   - metadata: Optional chunk metadata for context.
+    ///   - chunkIndex: Optional chunk index for source text citations.
     ///   - chatModel: Optional model override for chat.
     public init(
         hypergraph: StringHypergraph,
@@ -93,6 +101,7 @@ public actor GraphRAGService {
         llmProvider: any LLMProvider,
         embeddingService: EmbeddingService,
         metadata: [ChunkMetadata]? = nil,
+        chunkIndex: ChunkIndex? = nil,
         chatModel: String? = nil
     ) {
         self.hypergraph = hypergraph
@@ -100,6 +109,7 @@ public actor GraphRAGService {
         self.llmProvider = llmProvider
         self.embeddingService = embeddingService
         self.metadata = metadata
+        self.chunkIndex = chunkIndex
         self.chatModel = chatModel
     }
 
