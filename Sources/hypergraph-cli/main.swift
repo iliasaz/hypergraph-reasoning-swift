@@ -16,7 +16,7 @@ struct HypergraphCLI: AsyncParsableCommand {
         commandName: "hypergraph-cli",
         abstract: "CLI tool for building hypergraph knowledge representations",
         version: "0.1.0",
-        subcommands: [Process.self, Extract.self, Embed.self, Simplify.self, Info.self]
+        subcommands: [Process.self, Extract.self, Embed.self, Simplify.self, Info.self, Query.self]
     )
 }
 
@@ -498,6 +498,214 @@ extension HypergraphCLI {
             for (node, degree) in degrees.prefix(10) {
                 let displayNode = node.count > 40 ? String(node.prefix(37)) + "..." : node
                 print("  \(displayNode): \(degree)")
+            }
+        }
+    }
+}
+
+// MARK: - Query Command
+
+extension HypergraphCLI {
+    struct Query: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Query the hypergraph using GraphRAG"
+        )
+
+        @Argument(help: "The question to ask")
+        var question: String
+
+        @Option(name: .shortAndLong, help: "Hypergraph JSON file")
+        var graph: String
+
+        @Option(name: .shortAndLong, help: "Embeddings JSON file")
+        var embeddings: String
+
+        @Option(name: .long, help: "LLM provider for chat (ollama or openrouter)")
+        var provider: LLMProviderOption = .ollama
+
+        @Option(name: .long, help: "OpenRouter API key")
+        var apiKey: String?
+
+        @Option(name: .long, help: "Chat model")
+        var chatModel: String?
+
+        @Option(name: .long, help: "Embedding model")
+        var embeddingModel: String = "nomic-embed-text:v1.5"
+
+        @Option(name: .long, help: "Number of matching nodes per keyword")
+        var topK: Int = 5
+
+        @Option(name: .long, help: "Maximum path length for BFS")
+        var maxPathLength: Int = 4
+
+        @Option(name: .long, help: "Similarity threshold for node matching (0.0-1.0)")
+        var threshold: Float = 0.5
+
+        @Flag(name: .long, help: "Show retrieved context")
+        var showContext: Bool = false
+
+        @Flag(name: .long, help: "Use simple keyword extraction (no LLM)")
+        var simpleKeywords: Bool = false
+
+        @Flag(name: .long, help: "Only retrieve context (don't generate answer)")
+        var contextOnly: Bool = false
+
+        @Flag(name: .shortAndLong, help: "Enable verbose output")
+        var verbose: Bool = false
+
+        func run() async throws {
+            // Load hypergraph
+            let graphURL = URL(fileURLWithPath: graph)
+            if verbose {
+                print("Loading hypergraph from: \(graphURL.path)")
+            }
+            let hypergraph = try StringHypergraph.load(from: graphURL)
+            if verbose {
+                print("Loaded \(hypergraph.nodeCount) nodes, \(hypergraph.edgeCount) edges")
+            }
+
+            // Load embeddings
+            let embeddingsURL = URL(fileURLWithPath: embeddings)
+            if verbose {
+                print("Loading embeddings from: \(embeddingsURL.path)")
+            }
+            let embeddingsData = try Data(contentsOf: embeddingsURL)
+            let nodeEmbeddings = try JSONDecoder().decode(NodeEmbeddings.self, from: embeddingsData)
+            if verbose {
+                print("Loaded \(nodeEmbeddings.count) embeddings")
+            }
+
+            // Determine the chat model
+            let effectiveChatModel: String
+            switch provider {
+            case .ollama:
+                effectiveChatModel = chatModel ?? "gpt-oss:20b"
+            case .openrouter:
+                effectiveChatModel = chatModel ?? "meta-llama/llama-4-maverick"
+            }
+
+            // Create Ollama service for embeddings
+            let ollama = await MainActor.run {
+                OllamaService(
+                    chatModel: effectiveChatModel,
+                    embeddingModel: embeddingModel
+                )
+            }
+
+            // Create LLM provider
+            let llmProvider: any LLMProvider
+            switch provider {
+            case .ollama:
+                llmProvider = ollama
+            case .openrouter:
+                guard let key = apiKey else {
+                    throw ValidationError("--api-key is required when using openrouter provider")
+                }
+                llmProvider = try OpenRouterService(
+                    apiKey: key,
+                    model: effectiveChatModel
+                )
+            }
+
+            // Create embedding service
+            let embeddingService = EmbeddingService(
+                ollamaService: ollama,
+                model: embeddingModel
+            )
+
+            // Create GraphRAG service
+            let ragService = GraphRAGService(
+                hypergraph: hypergraph,
+                embeddings: nodeEmbeddings,
+                llmProvider: llmProvider,
+                embeddingService: embeddingService,
+                chatModel: effectiveChatModel
+            )
+
+            if verbose {
+                print("Query: \(question)")
+                print("Provider: \(provider.rawValue)")
+                print("Model: \(effectiveChatModel)")
+                print("Top-K: \(topK)")
+                print("Max Path Length: \(maxPathLength)")
+                print("")
+            }
+
+            if contextOnly {
+                // Only retrieve context
+                let context: RAGContext
+                if simpleKeywords {
+                    context = try await ragService.retrieveContextSimple(
+                        for: question,
+                        topK: topK
+                    )
+                } else {
+                    context = try await ragService.retrieveContext(
+                        for: question,
+                        topK: topK,
+                        maxPathLength: maxPathLength,
+                        similarityThreshold: threshold
+                    )
+                }
+
+                printContext(context, verbose: verbose || showContext)
+            } else {
+                // Full RAG query with answer generation
+                print("Searching knowledge graph...")
+
+                let response = try await ragService.query(
+                    question,
+                    topK: topK,
+                    maxPathLength: maxPathLength
+                )
+
+                if showContext || verbose {
+                    printContext(response.context, verbose: true)
+                    print("\n" + String(repeating: "=", count: 60) + "\n")
+                }
+
+                print("Answer:")
+                print(response.answer)
+
+                if !response.hadContext {
+                    print("\n[Note: No relevant graph context was found for this query]")
+                }
+            }
+        }
+
+        private func printContext(_ context: RAGContext, verbose: Bool) {
+            if verbose {
+                print("Keywords extracted: \(context.keywords.joined(separator: ", "))")
+                print("Matched nodes: \(context.matchedNodeCount)")
+                print("Paths found: \(context.paths.count)")
+                print("")
+            }
+
+            if context.hasContext {
+                print("Retrieved Context:")
+                print(context.formattedContext)
+            } else {
+                print("No relevant context found in the knowledge graph.")
+            }
+
+            if verbose && !context.matchedNodes.isEmpty {
+                print("\nMatched Nodes:")
+                for match in context.matchedNodes.prefix(10) {
+                    print("  - \(match.node) (keyword: \(match.keyword), sim: \(String(format: "%.3f", match.similarity)))")
+                }
+                if context.matchedNodes.count > 10 {
+                    print("  ... and \(context.matchedNodes.count - 10) more")
+                }
+            }
+
+            if verbose && !context.paths.isEmpty {
+                print("\nPaths:")
+                for (i, path) in context.paths.prefix(5).enumerated() {
+                    print("  \(i + 1). \(path.joined(separator: " -> "))")
+                }
+                if context.paths.count > 5 {
+                    print("  ... and \(context.paths.count - 5) more")
+                }
             }
         }
     }
