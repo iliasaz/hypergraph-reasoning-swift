@@ -47,7 +47,7 @@ extension HypergraphCLI {
         var embeddingModel: String = "nomic-embed-text:v1.5"
 
         @Option(name: .long, help: "Chunk size for text splitting")
-        var chunkSize: Int = 10000
+        var chunkSize: Int = 1000
 
         @Flag(name: .long, help: "Skip embedding generation")
         var skipEmbeddings: Bool = false
@@ -121,23 +121,19 @@ extension HypergraphCLI {
             }
 
             if isDirectory.boolValue {
-                // Process directory
+                // Process directory (parallel processing, then merge)
                 print("Processing directory: \(inputURL.path)")
-                let results = try await processor.processMarkdownDirectory(
+                let result = try await processor.processAndMergeDirectory(
                     at: inputURL,
-                    outputDir: outputURL,
-                    generateEmbeddings: !skipEmbeddings
+                    recursive: true,
+                    maxConcurrency: 4,
+                    generateEmbeddings: !skipEmbeddings,
+                    verbose: verbose
                 )
 
-                print("Processed \(results.count) files")
-
-                // Merge all results
-                if !results.isEmpty {
-                    print("Merging results...")
-                    let merged = try await processor.mergeResults(results)
-                    try await processor.saveResult(merged, to: outputURL)
-                    print("Final hypergraph: \(merged.nodeCount) nodes, \(merged.edgeCount) edges")
-                }
+                try await processor.saveResult(result, to: outputURL)
+                print("Hypergraph: \(result.nodeCount) nodes, \(result.edgeCount) edges")
+                print("Results saved to: \(outputURL.path)")
             } else {
                 // Process single file
                 print("Processing file: \(inputURL.path)")

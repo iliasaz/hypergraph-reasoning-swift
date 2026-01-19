@@ -24,10 +24,13 @@ public struct ChunkIndex: Sendable, Codable {
 
     /// Creates a chunk index from an array of TextChunks.
     ///
+    /// If multiple chunks have the same ID (identical content), the first one is kept.
+    ///
     /// - Parameter chunks: The chunks to index.
     public init(chunks: [TextChunk]) {
         self.storage = Dictionary(
-            uniqueKeysWithValues: chunks.map { ($0.chunkID, $0.text) }
+            chunks.map { ($0.chunkID, $0.text) },
+            uniquingKeysWith: { first, _ in first }
         )
     }
 

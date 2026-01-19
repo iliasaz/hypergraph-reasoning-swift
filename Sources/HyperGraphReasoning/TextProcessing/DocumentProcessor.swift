@@ -21,13 +21,13 @@ public actor DocumentProcessor {
     ///   - ollamaService: The Ollama service for LLM inference and embeddings.
     ///   - chatModel: Model for chat/extraction. Defaults to "gpt-oss:20b".
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
-    ///   - chunkSize: Default chunk size. Defaults to 10000.
+    ///   - chunkSize: Default chunk size. Defaults to 1000.
     @MainActor
     public init(
         ollamaService: OllamaService,
         chatModel: String = "gpt-oss:20b",
         embeddingModel: String = "nomic-embed-text:v1.5",
-        chunkSize: Int = 10000
+        chunkSize: Int = 1000
     ) {
         self.extractor = HypergraphExtractor(
             ollamaService: ollamaService,
@@ -48,13 +48,13 @@ public actor DocumentProcessor {
     ///   - ollamaService: The Ollama service for embeddings (required for embedding generation).
     ///   - chatModel: Model for chat/extraction.
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
-    ///   - chunkSize: Default chunk size. Defaults to 10000.
+    ///   - chunkSize: Default chunk size. Defaults to 1000.
     public init(
         llmProvider: any LLMProvider,
         ollamaService: OllamaService,
         chatModel: String,
         embeddingModel: String = "nomic-embed-text:v1.5",
-        chunkSize: Int = 10000
+        chunkSize: Int = 1000
     ) {
         self.extractor = HypergraphExtractor(
             llmProvider: llmProvider,
@@ -77,7 +77,7 @@ public actor DocumentProcessor {
     public init(
         extractor: HypergraphExtractor,
         embeddingService: EmbeddingService,
-        chunkSize: Int = 10000
+        chunkSize: Int = 1000
     ) {
         self.extractor = extractor
         self.embeddingService = embeddingService
@@ -138,45 +138,154 @@ public actor DocumentProcessor {
 
     // MARK: - Batch Processing
 
-    /// Processes a directory of markdown files.
+    /// Processes a directory of markdown files in parallel.
+    ///
+    /// Files are processed concurrently for faster execution. Each file's
+    /// document ID is preserved in the result for provenance tracking.
     ///
     /// - Parameters:
     ///   - directoryPath: Path to the directory.
-    ///   - outputDir: Optional output directory for intermediate results.
+    ///   - recursive: Whether to search subdirectories. Defaults to true.
+    ///   - maxConcurrency: Maximum concurrent tasks. Defaults to 4.
     ///   - generateEmbeddings: Whether to generate embeddings.
-    /// - Returns: Array of processing results.
+    ///   - verbose: Whether to print progress. Defaults to false.
+    /// - Returns: Array of processing results (one per file).
     public func processMarkdownDirectory(
         at directoryPath: URL,
-        outputDir: URL? = nil,
-        generateEmbeddings: Bool = true
+        recursive: Bool = true,
+        maxConcurrency: Int = 4,
+        generateEmbeddings: Bool = true,
+        verbose: Bool = false
     ) async throws -> [ProcessingResult] {
-        let fileManager = FileManager.default
-        let contents = try fileManager.contentsOfDirectory(
-            at: directoryPath,
-            includingPropertiesForKeys: nil
-        )
+        // Find all markdown files
+        let markdownFiles = try findMarkdownFiles(in: directoryPath, recursive: recursive)
 
-        let markdownFiles = contents.filter { $0.pathExtension == "md" }
+        guard !markdownFiles.isEmpty else {
+            return []
+        }
+
+        let total = markdownFiles.count
+        var completed = 0
         var results = [ProcessingResult]()
 
-        for file in markdownFiles {
-            do {
-                let result = try await processMarkdownFile(
-                    at: file,
-                    generateEmbeddings: generateEmbeddings
-                )
-                results.append(result)
+        if verbose {
+            print("Found \(total) markdown files to process")
+        }
 
-                // Optionally save intermediate result
-                if let outputDir = outputDir {
-                    try saveResult(result, to: outputDir)
+        // Process in batches to limit concurrency
+        for batch in markdownFiles.chunked(into: maxConcurrency) {
+            let batchResults = await withTaskGroup(of: (URL, ProcessingResult?).self) { group in
+                for file in batch {
+                    group.addTask {
+                        do {
+                            let result = try await self.processMarkdownFile(
+                                at: file,
+                                generateEmbeddings: generateEmbeddings
+                            )
+                            return (file, result)
+                        } catch {
+                            print("Warning: Failed to process \(file.lastPathComponent): \(error)")
+                            return (file, nil)
+                        }
+                    }
                 }
-            } catch {
-                print("Warning: Failed to process \(file.lastPathComponent): \(error)")
+
+                var batchResults = [(URL, ProcessingResult?)]()
+                for await result in group {
+                    batchResults.append(result)
+                }
+                return batchResults
+            }
+
+            // Collect successful results and report progress
+            for (file, result) in batchResults {
+                completed += 1
+                if verbose {
+                    print("[\(completed)/\(total)] Processed: \(file.lastPathComponent)")
+                }
+                if let result = result {
+                    results.append(result)
+                }
             }
         }
 
         return results
+    }
+
+    /// Finds all markdown files in a directory.
+    ///
+    /// - Parameters:
+    ///   - directory: The directory to search.
+    ///   - recursive: Whether to search subdirectories.
+    /// - Returns: Array of file URLs.
+    private func findMarkdownFiles(in directory: URL, recursive: Bool) throws -> [URL] {
+        let fileManager = FileManager.default
+
+        if recursive {
+            var files = [URL]()
+            if let enumerator = fileManager.enumerator(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for case let fileURL as URL in enumerator {
+                    if fileURL.pathExtension.lowercased() == "md" {
+                        files.append(fileURL)
+                    }
+                }
+            }
+            return files.sorted { $0.path < $1.path }
+        } else {
+            let contents = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            )
+            return contents
+                .filter { $0.pathExtension.lowercased() == "md" }
+                .sorted { $0.path < $1.path }
+        }
+    }
+
+    /// Processes multiple markdown files and merges them into a single result.
+    ///
+    /// This is the recommended approach for multi-file processing:
+    /// 1. Process each file individually (preserving provenance)
+    /// 2. Merge hypergraphs
+    /// 3. Optionally update embeddings for the merged graph
+    ///
+    /// - Parameters:
+    ///   - directoryPath: Path to the directory.
+    ///   - recursive: Whether to search subdirectories. Defaults to true.
+    ///   - maxConcurrency: Maximum concurrent tasks. Defaults to 4.
+    ///   - generateEmbeddings: Whether to generate embeddings.
+    ///   - verbose: Whether to print progress. Defaults to false.
+    /// - Returns: A single merged processing result.
+    public func processAndMergeDirectory(
+        at directoryPath: URL,
+        recursive: Bool = true,
+        maxConcurrency: Int = 4,
+        generateEmbeddings: Bool = true,
+        verbose: Bool = false
+    ) async throws -> ProcessingResult {
+        let results = try await processMarkdownDirectory(
+            at: directoryPath,
+            recursive: recursive,
+            maxConcurrency: maxConcurrency,
+            generateEmbeddings: generateEmbeddings,
+            verbose: verbose
+        )
+
+        guard !results.isEmpty else {
+            return ProcessingResult(
+                hypergraph: Hypergraph(),
+                metadata: [],
+                embeddings: NodeEmbeddings(),
+                chunkIndex: ChunkIndex()
+            )
+        }
+
+        // Merge results (embeddings will be combined)
+        return try await mergeResults(results, updateEmbeddings: generateEmbeddings)
     }
 
     // MARK: - Merging
@@ -377,5 +486,20 @@ public struct ProcessingResult: Sendable, Codable {
 extension ProcessingResult: CustomStringConvertible {
     public var description: String {
         "ProcessingResult(nodes: \(nodeCount), edges: \(edgeCount), embeddings: \(embeddings.count))"
+    }
+}
+
+// MARK: - Array Chunking Extension
+
+extension Array {
+    /// Splits the array into chunks of the specified size.
+    ///
+    /// - Parameter size: The maximum size of each chunk.
+    /// - Returns: An array of arrays, each containing at most `size` elements.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
     }
 }

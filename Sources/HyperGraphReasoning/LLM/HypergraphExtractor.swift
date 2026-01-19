@@ -24,13 +24,13 @@ public actor HypergraphExtractor {
     /// - Parameters:
     ///   - llmProvider: The LLM provider to use.
     ///   - model: The LLM model name to use for extraction.
-    ///   - chunkSize: Size of text chunks. Defaults to 10000.
+    ///   - chunkSize: Size of text chunks. Defaults to 1000.
     ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
     ///   - distillByDefault: Whether to distill text by default. Defaults to false.
     public init(
         llmProvider: any LLMProvider,
         model: String,
-        chunkSize: Int = 10000,
+        chunkSize: Int = 1000,
         chunkOverlap: Int = 0,
         distillByDefault: Bool = false
     ) {
@@ -48,14 +48,14 @@ public actor HypergraphExtractor {
     /// - Parameters:
     ///   - ollamaService: The Ollama service to use.
     ///   - model: The LLM model name. Defaults to "gpt-oss:20b".
-    ///   - chunkSize: Size of text chunks. Defaults to 10000.
+    ///   - chunkSize: Size of text chunks. Defaults to 1000.
     ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
     ///   - distillByDefault: Whether to distill text by default. Defaults to false.
     @MainActor
     public init(
         ollamaService: OllamaService,
         model: String? = nil,
-        chunkSize: Int = 10000,
+        chunkSize: Int = 1000,
         chunkOverlap: Int = 0,
         distillByDefault: Bool = false
     ) {
@@ -161,13 +161,16 @@ public actor HypergraphExtractor {
 
     /// Extracts events from text using the LLM.
     private func extractEvents(from text: String) async throws -> HypergraphJSON {
-        try await llmProvider.generate(
+        let rawResult = try await llmProvider.generate(
             systemPrompt: SystemPrompts.hypergraphExtraction,
             userPrompt: SystemPrompts.extractionUserPrompt(text: text),
             responseType: HypergraphJSON.self,
             model: model,
             temperature: nil
         )
+
+        // Filter out vague/pronominal nodes that slipped through
+        return NodeFilter.filter(rawResult)
     }
 }
 
