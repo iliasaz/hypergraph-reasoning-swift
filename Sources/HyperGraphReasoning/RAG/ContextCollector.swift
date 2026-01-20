@@ -174,7 +174,7 @@ public struct ContextCollector: Sendable {
         targetNode: String? = nil,
         includeLabel: Bool = true
     ) -> String {
-        let relation = includeLabel ? extractRelation(from: edgeID) : nil
+        let relation = includeLabel ? Self.extractRelation(from: edgeID) : nil
 
         // If we have specific source/target from metadata
         if let meta = metadata?.first(where: { $0.edge == edgeID }) {
@@ -243,7 +243,10 @@ public struct ContextCollector: Sendable {
     /// Note: Python uses the relation exactly as extracted from the edge ID.
     /// If underscores should be converted to spaces, that should be done
     /// at hypergraph construction time, not here.
-    private func extractRelation(from edgeID: String) -> String? {
+    ///
+    /// - Parameter edgeID: The edge identifier string.
+    /// - Returns: The extracted relation, or nil if extraction failed.
+    public static func extractRelation(from edgeID: String) -> String? {
         // Try to extract relation from edge ID
         // Format: "relation_chunk..." or "relation_chunkXXX_N"
         // Python regex: r"(.+?)_chunk([0-9A-Za-z]+)_(\d+)"
