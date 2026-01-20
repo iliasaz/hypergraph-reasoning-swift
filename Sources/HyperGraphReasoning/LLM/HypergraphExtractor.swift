@@ -19,6 +19,12 @@ public actor HypergraphExtractor {
     /// Whether to distill text before extraction.
     private let distillByDefault: Bool
 
+    /// Default system prompt for hypergraph extraction.
+    private let extractionSystemPrompt: String
+
+    /// Default system prompt for text distillation.
+    private let distillationSystemPrompt: String
+
     /// Creates a hypergraph extractor with any LLM provider.
     ///
     /// - Parameters:
@@ -27,12 +33,16 @@ public actor HypergraphExtractor {
     ///   - chunkSize: Size of text chunks. Defaults to 1000.
     ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
     ///   - distillByDefault: Whether to distill text by default. Defaults to false.
+    ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
+    ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     public init(
         llmProvider: any LLMProvider,
         model: String,
         chunkSize: Int = 1000,
         chunkOverlap: Int = 0,
-        distillByDefault: Bool = false
+        distillByDefault: Bool = false,
+        extractionSystemPrompt: String? = nil,
+        distillationSystemPrompt: String? = nil
     ) {
         self.llmProvider = llmProvider
         self.model = model
@@ -41,6 +51,8 @@ public actor HypergraphExtractor {
             chunkOverlap: chunkOverlap
         )
         self.distillByDefault = distillByDefault
+        self.extractionSystemPrompt = extractionSystemPrompt ?? SystemPrompts.hypergraphExtraction
+        self.distillationSystemPrompt = distillationSystemPrompt ?? SystemPrompts.distillation
     }
 
     /// Creates a hypergraph extractor with an Ollama service (convenience initializer).
@@ -51,13 +63,17 @@ public actor HypergraphExtractor {
     ///   - chunkSize: Size of text chunks. Defaults to 1000.
     ///   - chunkOverlap: Overlap between chunks. Defaults to 0.
     ///   - distillByDefault: Whether to distill text by default. Defaults to false.
+    ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
+    ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     @MainActor
     public init(
         ollamaService: OllamaService,
         model: String? = nil,
         chunkSize: Int = 1000,
         chunkOverlap: Int = 0,
-        distillByDefault: Bool = false
+        distillByDefault: Bool = false,
+        extractionSystemPrompt: String? = nil,
+        distillationSystemPrompt: String? = nil
     ) {
         self.llmProvider = ollamaService
         self.model = model ?? ollamaService.defaultModel
@@ -66,6 +82,8 @@ public actor HypergraphExtractor {
             chunkOverlap: chunkOverlap
         )
         self.distillByDefault = distillByDefault
+        self.extractionSystemPrompt = extractionSystemPrompt ?? SystemPrompts.hypergraphExtraction
+        self.distillationSystemPrompt = distillationSystemPrompt ?? SystemPrompts.distillation
     }
 
     // MARK: - Extraction from Text
@@ -152,7 +170,7 @@ public actor HypergraphExtractor {
     /// Distills text using the LLM.
     private func distillText(_ text: String) async throws -> String {
         try await llmProvider.chat(
-            systemPrompt: SystemPrompts.distillation,
+            systemPrompt: distillationSystemPrompt,
             userPrompt: SystemPrompts.distillationUserPrompt(text: text),
             model: model,
             temperature: nil
@@ -162,7 +180,7 @@ public actor HypergraphExtractor {
     /// Extracts events from text using the LLM.
     private func extractEvents(from text: String) async throws -> HypergraphJSON {
         let rawResult = try await llmProvider.generate(
-            systemPrompt: SystemPrompts.hypergraphExtraction,
+            systemPrompt: extractionSystemPrompt,
             userPrompt: SystemPrompts.extractionUserPrompt(text: text),
             responseType: HypergraphJSON.self,
             model: model,

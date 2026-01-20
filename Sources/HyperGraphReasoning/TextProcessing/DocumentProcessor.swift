@@ -15,6 +15,12 @@ public actor DocumentProcessor {
     /// Default chunk size for processing.
     private let defaultChunkSize: Int
 
+    /// Custom extraction system prompt (if any).
+    private let extractionSystemPrompt: String?
+
+    /// Custom distillation system prompt (if any).
+    private let distillationSystemPrompt: String?
+
     /// Creates a document processor with Ollama service.
     ///
     /// - Parameters:
@@ -22,23 +28,31 @@ public actor DocumentProcessor {
     ///   - chatModel: Model for chat/extraction. Defaults to "gpt-oss:20b".
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
     ///   - chunkSize: Default chunk size. Defaults to 1000.
+    ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
+    ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     @MainActor
     public init(
         ollamaService: OllamaService,
         chatModel: String = "gpt-oss:20b",
         embeddingModel: String = "nomic-embed-text:v1.5",
-        chunkSize: Int = 1000
+        chunkSize: Int = 1000,
+        extractionSystemPrompt: String? = nil,
+        distillationSystemPrompt: String? = nil
     ) {
         self.extractor = HypergraphExtractor(
             ollamaService: ollamaService,
             model: chatModel,
-            chunkSize: chunkSize
+            chunkSize: chunkSize,
+            extractionSystemPrompt: extractionSystemPrompt,
+            distillationSystemPrompt: distillationSystemPrompt
         )
         self.embeddingService = EmbeddingService(
             ollamaService: ollamaService,
             model: embeddingModel
         )
         self.defaultChunkSize = chunkSize
+        self.extractionSystemPrompt = extractionSystemPrompt
+        self.distillationSystemPrompt = distillationSystemPrompt
     }
 
     /// Creates a document processor with any LLM provider.
@@ -49,23 +63,31 @@ public actor DocumentProcessor {
     ///   - chatModel: Model for chat/extraction.
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
     ///   - chunkSize: Default chunk size. Defaults to 1000.
+    ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
+    ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     public init(
         llmProvider: any LLMProvider,
         ollamaService: OllamaService,
         chatModel: String,
         embeddingModel: String = "nomic-embed-text:v1.5",
-        chunkSize: Int = 1000
+        chunkSize: Int = 1000,
+        extractionSystemPrompt: String? = nil,
+        distillationSystemPrompt: String? = nil
     ) {
         self.extractor = HypergraphExtractor(
             llmProvider: llmProvider,
             model: chatModel,
-            chunkSize: chunkSize
+            chunkSize: chunkSize,
+            extractionSystemPrompt: extractionSystemPrompt,
+            distillationSystemPrompt: distillationSystemPrompt
         )
         self.embeddingService = EmbeddingService(
             ollamaService: ollamaService,
             model: embeddingModel
         )
         self.defaultChunkSize = chunkSize
+        self.extractionSystemPrompt = extractionSystemPrompt
+        self.distillationSystemPrompt = distillationSystemPrompt
     }
 
     /// Creates a document processor with existing services.
@@ -74,14 +96,20 @@ public actor DocumentProcessor {
     ///   - extractor: The hypergraph extractor to use.
     ///   - embeddingService: The embedding service to use.
     ///   - chunkSize: Default chunk size.
+    ///   - extractionSystemPrompt: Custom system prompt for extraction (for reference only, extractor already configured).
+    ///   - distillationSystemPrompt: Custom system prompt for distillation (for reference only, extractor already configured).
     public init(
         extractor: HypergraphExtractor,
         embeddingService: EmbeddingService,
-        chunkSize: Int = 1000
+        chunkSize: Int = 1000,
+        extractionSystemPrompt: String? = nil,
+        distillationSystemPrompt: String? = nil
     ) {
         self.extractor = extractor
         self.embeddingService = embeddingService
         self.defaultChunkSize = chunkSize
+        self.extractionSystemPrompt = extractionSystemPrompt
+        self.distillationSystemPrompt = distillationSystemPrompt
     }
 
     // MARK: - Single Document Processing
