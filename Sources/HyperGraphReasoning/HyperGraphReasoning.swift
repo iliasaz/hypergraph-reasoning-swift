@@ -78,7 +78,7 @@ public let version = "0.1.0"
 /// Default configuration for the library.
 public enum Configuration {
     /// Default chunk size for text processing.
-    public static let defaultChunkSize = 10000
+    public static let defaultChunkSize = 1000
 
     /// Default chunk overlap.
     public static let defaultChunkOverlap = 0

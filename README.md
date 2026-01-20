@@ -85,7 +85,7 @@ let ollama = OllamaService(
 // Create document processor
 let processor = DocumentProcessor(
     ollamaService: ollama,
-    chunkSize: 10000
+    chunkSize: 1000
 )
 
 // Process a markdown file
@@ -123,6 +123,15 @@ let processor = DocumentProcessor(
 
 let result = try await processor.processMarkdownFile(at: fileURL)
 ```
+
+**Supported OpenRouter Models:**
+- `meta-llama/llama-4-maverick` (default)
+- `openai/gpt-4.1-nano`
+- `openai/gpt-4.1-mini`
+- `openai/gpt-4.1`
+- `openai/gpt-5-nano`
+- `openai/gpt-5-mini`
+- `openai/gpt-5.2`
 
 ### Working with Hypergraphs
 
@@ -195,7 +204,7 @@ OPTIONS:
   --chat-model <model>    Chat model for extraction
                           (default: gpt-oss:20b for ollama, meta-llama/llama-4-maverick for openrouter)
   --embedding-model       Embedding model (default: nomic-embed-text:v1.5)
-  --chunk-size <size>     Chunk size for text splitting (default: 10000)
+  --chunk-size <size>     Chunk size for text splitting (default: 1000)
   --skip-embeddings       Skip embedding generation
   -v, --verbose           Enable verbose output
 ```
