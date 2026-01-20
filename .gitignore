@@ -26,3 +26,7 @@ test_output/
 
 # Generated output
 output/
+
+# Test output files
+.output/
+test_output.txt
