@@ -191,6 +191,52 @@ public final class OllamaService: @preconcurrency LLMProvider {
         }
     }
 
+    // MARK: - Streaming Chat
+
+    /// Generates a streaming response from the LLM, calling `onToken` for each chunk.
+    ///
+    /// - Parameters:
+    ///   - systemPrompt: The system prompt setting the context.
+    ///   - userPrompt: The user's prompt/question.
+    ///   - model: The model to use. Defaults to the service's default chat model.
+    ///   - temperature: Sampling temperature. Defaults to the service's default.
+    ///   - onToken: Closure called with each new token as it arrives.
+    /// - Returns: The full accumulated text response.
+    public func chatStream(
+        systemPrompt: String,
+        userPrompt: String,
+        model: String? = nil,
+        temperature: Double? = nil,
+        onToken: @escaping (String) -> Void
+    ) async throws -> String {
+        let modelToUse = model ?? defaultChatModel
+        let tempToUse = temperature ?? defaultTemperature
+
+        do {
+            let modelID: Model.ID = Model.ID(stringLiteral: modelToUse)
+            let stream = try client.chatStream(
+                model: modelID,
+                messages: [
+                    .system(systemPrompt),
+                    .user(userPrompt)
+                ],
+                options: ["temperature": .double(tempToUse)]
+            )
+
+            var accumulated = ""
+            for try await chunk in stream {
+                let token = chunk.message.content
+                if !token.isEmpty {
+                    accumulated += token
+                    onToken(token)
+                }
+            }
+            return accumulated
+        } catch {
+            throw OllamaError.connectionFailed(error)
+        }
+    }
+
     // MARK: - Embeddings
 
     /// Generates an embedding for a single text.

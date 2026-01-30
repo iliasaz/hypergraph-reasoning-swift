@@ -124,6 +124,62 @@ public actor OpenRouterService: LLMProvider {
         }
     }
 
+    // MARK: - Streaming Chat
+
+    /// Generates a streaming response from the LLM, calling `onToken` for each chunk.
+    ///
+    /// Uses the underlying SwiftAgents `OpenRouterProvider.stream()` SSE endpoint
+    /// to deliver tokens incrementally.
+    ///
+    /// - Parameters:
+    ///   - systemPrompt: The system prompt setting the context.
+    ///   - userPrompt: The user's prompt/question.
+    ///   - model: The model to use (currently unused; uses the service's default model).
+    ///   - temperature: Sampling temperature. Defaults to the service's default.
+    ///   - onToken: Closure called with each new token as it arrives.
+    /// - Returns: The full accumulated text response.
+    public func chatStream(
+        systemPrompt: String,
+        userPrompt: String,
+        model: String? = nil,
+        temperature: Double? = nil,
+        onToken: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        let fullPrompt = """
+        System: \(systemPrompt)
+
+        User: \(userPrompt)
+        """
+
+        let options = InferenceOptions.default
+            .maxTokens(maxTokens)
+            .temperature(temperature ?? self.temperature)
+
+        do {
+            let stream = provider.stream(prompt: fullPrompt, options: options)
+
+            var accumulated = ""
+            for try await token in stream {
+                if !token.isEmpty {
+                    accumulated += token
+                    onToken(token)
+                }
+            }
+
+            if accumulated.isEmpty {
+                throw LLMProviderError.invalidResponse(
+                    "Empty streaming response from model '\(defaultModel)'."
+                )
+            }
+
+            return accumulated
+        } catch let error as LLMProviderError {
+            throw error
+        } catch {
+            throw mapProviderError(error)
+        }
+    }
+
     /// Generates a structured JSON response from the LLM.
     public func generate<T: Decodable & Sendable>(
         systemPrompt: String,
