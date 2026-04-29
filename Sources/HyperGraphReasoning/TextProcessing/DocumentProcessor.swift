@@ -21,6 +21,9 @@ public actor DocumentProcessor {
     /// Custom distillation system prompt (if any).
     private let distillationSystemPrompt: String?
 
+    /// Whether the underlying extractor distills text by default.
+    private let distillByDefault: Bool
+
     /// Creates a document processor with Ollama service.
     ///
     /// - Parameters:
@@ -28,6 +31,7 @@ public actor DocumentProcessor {
     ///   - chatModel: Model for chat/extraction. Defaults to "gpt-oss:20b".
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
     ///   - chunkSize: Default chunk size. Defaults to 1000.
+    ///   - distillByDefault: Whether the extractor should distill each chunk by default. Defaults to false.
     ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
     ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     @MainActor
@@ -36,6 +40,7 @@ public actor DocumentProcessor {
         chatModel: String = "gpt-oss:20b",
         embeddingModel: String = "nomic-embed-text:v1.5",
         chunkSize: Int = 1000,
+        distillByDefault: Bool = false,
         extractionSystemPrompt: String? = nil,
         distillationSystemPrompt: String? = nil
     ) {
@@ -43,6 +48,7 @@ public actor DocumentProcessor {
             ollamaService: ollamaService,
             model: chatModel,
             chunkSize: chunkSize,
+            distillByDefault: distillByDefault,
             extractionSystemPrompt: extractionSystemPrompt,
             distillationSystemPrompt: distillationSystemPrompt
         )
@@ -53,6 +59,7 @@ public actor DocumentProcessor {
         self.defaultChunkSize = chunkSize
         self.extractionSystemPrompt = extractionSystemPrompt
         self.distillationSystemPrompt = distillationSystemPrompt
+        self.distillByDefault = distillByDefault
     }
 
     /// Creates a document processor with any LLM provider.
@@ -63,6 +70,7 @@ public actor DocumentProcessor {
     ///   - chatModel: Model for chat/extraction.
     ///   - embeddingModel: Model for embeddings. Defaults to "nomic-embed-text:v1.5".
     ///   - chunkSize: Default chunk size. Defaults to 1000.
+    ///   - distillByDefault: Whether the extractor should distill each chunk by default. Defaults to false.
     ///   - extractionSystemPrompt: Custom system prompt for extraction. Defaults to SystemPrompts.hypergraphExtraction.
     ///   - distillationSystemPrompt: Custom system prompt for distillation. Defaults to SystemPrompts.distillation.
     public init(
@@ -71,6 +79,7 @@ public actor DocumentProcessor {
         chatModel: String,
         embeddingModel: String = "nomic-embed-text:v1.5",
         chunkSize: Int = 1000,
+        distillByDefault: Bool = false,
         extractionSystemPrompt: String? = nil,
         distillationSystemPrompt: String? = nil
     ) {
@@ -78,6 +87,7 @@ public actor DocumentProcessor {
             llmProvider: llmProvider,
             model: chatModel,
             chunkSize: chunkSize,
+            distillByDefault: distillByDefault,
             extractionSystemPrompt: extractionSystemPrompt,
             distillationSystemPrompt: distillationSystemPrompt
         )
@@ -88,6 +98,7 @@ public actor DocumentProcessor {
         self.defaultChunkSize = chunkSize
         self.extractionSystemPrompt = extractionSystemPrompt
         self.distillationSystemPrompt = distillationSystemPrompt
+        self.distillByDefault = distillByDefault
     }
 
     /// Creates a document processor with existing services.
@@ -110,6 +121,7 @@ public actor DocumentProcessor {
         self.defaultChunkSize = chunkSize
         self.extractionSystemPrompt = extractionSystemPrompt
         self.distillationSystemPrompt = distillationSystemPrompt
+        self.distillByDefault = false
     }
 
     // MARK: - Single Document Processing
