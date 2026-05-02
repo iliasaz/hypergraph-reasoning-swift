@@ -297,7 +297,7 @@ This is a Swift port of the hypergraph building pipeline from:
 **HyperGraphReasoning: Higher-Order Knowledge Representations for Agentic Scientific Reasoning**
 
 - Original Repository: [github.com/lamm-mit/HyperGraphReasoning](https://github.com/lamm-mit/HyperGraphReasoning)
-- Paper: [arXiv:2505.00091](https://arxiv.org/abs/2505.00091)
+- Paper: [Higher-Order Knowledge Representations for Agentic Scientific Reasoning](https://arxiv.org/abs/2601.04878)
 - Dataset: [HuggingFace](https://huggingface.co/datasets/lamm-mit/HyperGraphReasoning)
 
 ```bibtex
